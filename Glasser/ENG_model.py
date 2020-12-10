@@ -27,6 +27,7 @@ k_B = 1.38064852E-23 #boltzmann's constant
 e = F/AN #elementary charge
 # Inputs:
 C_rate = 0.1 # How many charges per hour?
+N_0 = 0 #number of initial nucleations.
 alpha =0.5 #assumed value
 T = 298 # K
 D_Li = 3.21  #https://www.cell.com/cms/10.1016/j.joule.2018.11.016/attachment/b036fef4-0b6b-4922-9d3d-30736fd991e6/mmc1
@@ -42,31 +43,42 @@ C_d = 80*(100*100)/1000 #microF/cm2 to microF/m2 to F/m2 https://pubs.rsc.org/en
 gamma_G = 1.2E13*100*100 #cm^2 to m2 adatom concentration, not sure what this is but took literature value ^
 
 #calcs
-A_vol = (1/(MW*AN))/rho #m3
+A_vol = MW/(AN*rho) #m3/molecule
 r_c = 2*sigma*A_vol/(z*e*OCV) + (A_vol*3/(4*pi))**(1/3) #m
+A_c = 2*pi*r_c**2
+b = (18*pi*A_vol**2)**(1/3)*sigma
+G_c = (z*e*OCV/b)**(-3)
 
 Area = 2*pi*r_c**2*50 #test area approximately ten times the nucleation
-initial = [OCV, r_c, Area]
-print( initial)
+initial = [OCV, r_c, Area, N_0]
+print(initial)
 time_of =np.array([0,10])
+
 #%%
 
 def residual1(t,SV):
-    V, r, A = SV
+    #intial calcs
+    V, r, A, N = SV
     n_p = 2*sigma*A_vol/(z*e*r)
     f_place = z*e/(k_B*T)
     i_dif = z*e*c_0*D_Li/r*(1-exp(-f_place*V))
+    G_g= -z*e*V*G_c+b*G_c*(2/3)
+    z_n = (-1/(2*pi*k_B*T))*(-2/6)*G_c**(-4/3)
+    B_g=i_0*A_vol/(z*e)
+    #differential
     dr_dt =  i_dif*A_vol/(z*e)
-    dA_dt = dr_dt*2*pi*r
+    dN_dt = z_n*B_g*gamma_G*exp(-G_g/(k_B*T))
+    dA_dt = -(N*dr_dt*2*pi*r + dN_dt*A_c)
     dV_dt = -(i_0 - 2*pi*r**2*i_dif/A)/(C_d +z*e*f_place*gamma_G*exp(f_place*(OCV)))
     print(dV_dt)
-    return [dV_dt, dr_dt, dA_dt]
+    return [dV_dt, dr_dt, dA_dt, dN_dt]
 
 solution1 = solve_ivp(residual1,time_of,initial)
 
 voltage_change = solution1.y[0]
 radius_change = solution1.y[1]
 Area_change = solution1.y[2]
+Nucleation_change = solution1.y[3]
 final_time = solution1.t
 print(final_time)
 #%%
