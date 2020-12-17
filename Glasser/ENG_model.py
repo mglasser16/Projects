@@ -25,6 +25,7 @@ R = 8.3145
 AN = 6.0221E23 #avogadro's number
 k_B = 1.38064852E-23 #boltzmann's constant
 e = F/AN #elementary charge
+#%%
 # Inputs:
 C_rate = 0.1 # How many charges per hour?
 N_0 = 0 #number of initial nucleations.
@@ -50,7 +51,7 @@ b = (18*pi*A_vol**2)**(1/3)*sigma
 G_c = (z*e*OCV/b)**(-3)
 
 Area = 2*pi*r_c**2*50 #test area approximately ten times the nucleation
-initial = [OCV, r_c, Area, N_0]
+initial = [OCV, r_c, Area, N_0, gamma_G]
 print(initial)
 time_of =np.array([0,10])
 
@@ -58,7 +59,7 @@ time_of =np.array([0,10])
 
 def residual1(t,SV):
     #intial calcs
-    V, r, A, N = SV
+    V, r, A, N, adatom = SV
     n_p = 2*sigma*A_vol/(z*e*r)
     f_place = z*e/(k_B*T)
     i_dif = z*e*c_0*D_Li/r*(1-exp(-f_place*V))
@@ -67,11 +68,13 @@ def residual1(t,SV):
     B_g=i_0*A_vol/(z*e)
     #differential
     dr_dt =  i_dif*A_vol/(z*e)
-    dN_dt = z_n*B_g*gamma_G*exp(-G_g/(k_B*T))
+    dN_dt = z_n*B_g*adatom*exp(-G_g/(k_B*T))
     dA_dt = -(N*dr_dt*2*pi*r + dN_dt*A_c)
-    dV_dt = -(i_0 - 2*pi*r**2*i_dif/A)/(C_d +z*e*f_place*gamma_G*exp(f_place*(OCV)))
+    dV_dt = -(i_0 - 2*pi*r**2*i_dif/A)/(C_d +z*e*f_place*adatom*exp(f_place*(OCV)))
+    dadatom_dt = adatom*exp(f_place*V)
     print(dV_dt)
     return [dV_dt, dr_dt, dA_dt, dN_dt]
+
 
 solution1 = solve_ivp(residual1,time_of,initial)
 
@@ -91,6 +94,88 @@ plt.figure(0)
 plt.plot(final_time,radius_change)
 plt.xlabel("Time (s)")
 plt.ylabel("Radius (m)")
+
+#%% validation:
+
+Area =3.14E-9*100*100 #cm^2 to m2 area
+i = 0.00318 *100*100 # A/cm2 to A/m2
+C_D = 8E-5*100*100 #/cm2 o F/m2
+gamma_G = 1.2E13*100*100 #cm^2 to m2 adatom concentration, not sure what this is but took literature value ^
+T = 300 #K
+v = 1.7E-23/100/100/100 #cm3 to m3
+r_0 = 1E-9
+k_eff = 0.88*100 #Ohm-1, cm-1 to 1/(Ohm m)
+sigma = 1E-5*100*100 #J/cm2 to J/m2
+eta = 40E-10#V
+N=0
+time =np.array([0,1])
+r_c = 10E-7/100/100 #cm to m
+A_c = 2*pi*r_c**2
+b = (18*pi*v**2)**(1/3)*sigma
+G_c = (z*e*eta/b)**(-3)
+alpha = 0.5
+c_0 = 1.2E17*100*100*100 # cm ^3 to  m3
+D = 10E-5/100/100 # cm2/s to m2/s
+z = 1.0
+
+
+validation_int =[eta, r_0, Area, gamma_G]
+print (validation_int)
+
+def validation(t,SV):
+    #intial calcs
+    V, r, A, adatom = SV
+    n_p = 2*sigma*v/(z*e*r)
+    f_place = z*e/(k_B*T)
+    i_dif = 2*pi*z*e*c_0*r*D*(1-exp(-f_place*V))/(2*pi*r**2)
+    # G_g= -z*e*V*G_c+b*G_c*(2/3)
+    # z_n = (-1/(2*pi*k_B*T))*(-2/6)*G_c**(-4/3)
+    # B_g= i*Area/(z*e)
+    #differential
+    # if N < 1:
+    #     dr_dt =  0
+    # elif N >1 :
+    dr_dt =  c_0*v*D/r*(1-exp(-f_place*V))
+    # if N <1:
+    #     dN_dt = z_n*B_g*adatom*exp(-G_g/(k_B*T))
+    # elif N >1:
+    #     dN_dt = 0
+    dA_dt = -dr_dt*2*pi*r
+    print(A)
+    # dA_dt = -(N*dr_dt*2*pi*r + dN_dt*A_c)
+    # if N< 1:
+    #     dV_dt = (i)/(C_D +z*e*f_place*gamma_G*exp(f_place*(V)))
+    # elif N>1:
+    dV_dt = (i - 2*pi*r**2*i_dif/Area)/(C_D +z*e*f_place*gamma_G*exp(f_place*(V)))
+    dadatom_dt = adatom*exp(f_place*V)
+    return [dV_dt, dr_dt, dA_dt, dadatom_dt]
+
+Validation_fin = solve_ivp(validation,time,validation_int)
+voltage_change = Validation_fin.y[0]
+radius_change = Validation_fin.y[1]
+Area_change = Validation_fin.y[2]
+Nucleation_change = Validation_fin.y[3]
+final_time = Validation_fin.t
+
+#%%
+plt.figure(1)
+plt.plot(final_time,voltage_change)
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (V)")
+
+plt.figure(2)
+plt.plot(final_time,radius_change)
+plt.xlabel("Time (s)")
+plt.ylabel("radius (m)")
+
+# plt.figure(3)
+# plt.plot(final_time,Nucleation_change)
+# plt.xlabel("Time (s)")
+# plt.ylabel("Nucleations (#)")
+plt.figure(4)
+plt.plot(final_time,Area_change)
+plt.xlabel("Time (s)")
+plt.ylabel("Area (m3")
 #%%
 
 r_p_an = 4e-6 #m
